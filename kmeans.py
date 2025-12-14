@@ -79,7 +79,7 @@ def preprocess(text_data, option):
     else:
         # TODO: use SentenceTransformer to have embedding vectors
         model = SentenceTransformer(option)
-        vectors = model.encode(text_data.tolist())
+        vectors = model.encode(text_data)
         return vectors
 
 def test_preprocess(option):
