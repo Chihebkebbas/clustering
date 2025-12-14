@@ -17,13 +17,16 @@ def load_data(csv_file):
     Args:
         csv_file: path to the input csv file
     """
-    data_df = None
 
     # TODO: load csv
+    data_df = pd.read_csv(csv_file, sep=",")
 
     # TODO: print data type of each column
+    print("--- Infos sur le DataFrame ---")
+    print(data_df.info())
 
     # TODO: remove "title" column
+    data_df = data_df.drop(columns=['title'])
 
     return data_df
     
@@ -36,14 +39,25 @@ def sample(data_df):
     """
     # TODO: print counts by label
     print("Distribution:")
-    print()
+    print(data_df['label'].value_counts())
 
     # TODO: sample 700 texts for each label
-    sample_df = data_df
+    df_class_1 = data_df[data_df['label'] == 0]
+    df_class_2 = data_df[data_df['label'] == 1]
+
+    # On tire au hasard 700 exemples de chaque côté
+    # random_state=42 permet d'avoir toujours les mêmes 700 exemples si on relance le code
+    df_subset_1 = df_class_1.sample(n=700, random_state=42)
+    df_subset_2 = df_class_2.sample(n=700, random_state=42)
+
+    # On regroupe les deux morceaux
+    sample_df = pd.concat([df_subset_1, df_subset_2])
+    # On mélange le tout pour ne pas avoir 700 positifs puis 700 négatifs
+    sample_df = sample_df.sample(frac=1, random_state=42).reset_index(drop=True)
 
     # TODO: print counts by label after downsampling
     print("Distribution:")
-    print()
+    print(sample_df['label'].value_counts())
     return sample_df    
 
 
@@ -56,12 +70,17 @@ def preprocess(text_data, option):
     """
     if option == "BOW":
         # TODO: use CountVectorizer to have one-hot encoding to represent bag-of-words
-        data = None
+        vectorizer = CountVectorizer(lowercase=True)
+        vectorizer.fit(text_data)
+        vectors = vectorizer.transform(text_data)
+
+        return vectors.toarray()
+
     else:
         # TODO: use SentenceTransformer to have embedding vectors
-        data = None
-
-    return data
+        model = SentenceTransformer(option)
+        vectors = model.encode(text_data.tolist())
+        return vectors
 
 def test_preprocess(option):
     """Test preprocessing methods on similar and dissimilar English sentences
@@ -95,10 +114,16 @@ def cluster(data, nb_cluster, current_iter):
         current_iter: current iteration
     """
     # TODO: create KMeans object
-    kmeans = None
+    kmeans =  KMeans(
+        n_clusters=nb_cluster,   # Correspond aux 2 classes connues (0/1)
+        init='random',
+        n_init=1,
+        max_iter=current_iter,
+        random_state=42
+    )
 
     # TODO: predict labels
-    preds_label = None
+    preds_label = kmeans.fit_predict(data)
     return (preds_label, kmeans)
 
 
@@ -113,9 +138,9 @@ def reduce_2D(data):
         data: input data as array
     """
     # TODO: initialize PCA
-    method = None
+    method = PCA(n_components=2)
     # TODO: apply PCA
-    data_2d = None
+    data_2d = method.fit_transform(data)
 
     return (data_2d, method)
 
@@ -226,12 +251,25 @@ def scores_plot(data_lines):
         (list of purity scores, list of iterations, label)
     """
 
+    plt.figure(figsize=(10, 6))
+
     # TODO: plot each line
+    for scores, iterations, label in data_lines:
+        plt.plot(iterations, scores, marker='o', linestyle='-', label=label)
+
+    # Ajout des titres et axes pour la lisibilité
+    plt.title("Évolution de la pureté du clustering")
+    plt.xlabel("Nombre d'itérations")
+    plt.ylabel("Score de pureté")
+    plt.grid(True)
     
     # TODO: show legend at the center of the image
-    
+    # 'loc="center"' place la légende au milieu du graphique
+    plt.legend(loc="center")
+
     # TODO: save figure
-    
+    plt.savefig("./plots/plot_purity.png")
+
     plt.clf()
 
 
@@ -239,25 +277,25 @@ def scores_plot(data_lines):
 sample_df = sample(load_data("./data/Test.csv"))
 
 # TODO: get reference labels as a list
-ref_labels = []
+ref_labels = sample_df['label'].tolist()
 
 # store purity and iteration number for each tested configuraton
 purity_config_lst = []
 
-for PREPROCESS_NAME in ["BOW"]:
-# for PREPROCESS_NAME in ["BOW", "thenlper/gte-small"]:
+#for PREPROCESS_NAME in ["BOW"]:
+for PREPROCESS_NAME in ["BOW", "thenlper/gte-small"]:
     print("#"*25)
     print(f">>> Prétraitement: {PREPROCESS_NAME} <<<")
     print("#"*25)
 
-    # test_preprocess(PREPROCESS_NAME)
+    #test_preprocess(PREPROCESS_NAME)
 
     model_name_short = PREPROCESS_NAME.replace('/','-')
     SUB_DIR = f"./plots/{model_name_short}"
     os.makedirs(SUB_DIR, exist_ok=True)
 
-    # text_data = preprocess(sample_df["text"], PREPROCESS_NAME)
-    # text_data_2D, pca = reduce_2D(text_data)
+    text_data = preprocess(sample_df["text"], PREPROCESS_NAME)
+    text_data_2D, pca = reduce_2D(text_data)
 
     for NBR_CLUSTER in [2,4]:
         print("> Nombre de clusters:", NBR_CLUSTER)
@@ -268,14 +306,24 @@ for PREPROCESS_NAME in ["BOW"]:
             print("> Itération n°", current_iter)
             
             # TODO: make predictions for all dimensions, then (exercise 5) for first 2D
-            
+            preds_full, kmeans_full = cluster(text_data, NBR_CLUSTER, current_iter)
+            preds_2D, kmeans_2D = cluster(text_data_2D, NBR_CLUSTER, current_iter)
 
             # TODO: compute purities from predictions
-            
+            score_full = purity_score(ref_labels, preds_full)
+            score_2D = purity_score(ref_labels, preds_2D)
+
+            purity_data.append(score_full)
+            purity_data_2D.append(score_2D)
+            iter_data.append(current_iter)
 
             # TODO: scatter plot for predictions made from data for all dimensions, then for first 2D
+
             img_model =  f"{SUB_DIR}/plot_MODEL={model_name_short}_N={NBR_CLUSTER}_STEP={current_iter}.png"
+            scatter_plot(text_data_2D, ref_labels, preds_full, pca, kmeans_full, img_model)
+
             img_model_2D =  f"{SUB_DIR}/plot_MODEL={model_name_short}2D_N={NBR_CLUSTER}_STEP={current_iter}_2D.png" # pca = None
+            scatter_plot(text_data_2D, ref_labels, preds_2D, None, kmeans_2D, img_model_2D)
 
         purity_config_lst.append((purity_data, iter_data, f"{model_name_short}_N={NBR_CLUSTER}"))
         purity_config_lst.append((purity_data_2D, iter_data, f"{model_name_short}2D_N={NBR_CLUSTER}"))
